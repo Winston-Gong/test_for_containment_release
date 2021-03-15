@@ -203,7 +203,7 @@ para$qrate_pcr <- 0.9 # CC quarantine compliance rate based on positive pcr test
 para$ab_rate <- function(x, t_onset) 1/(1 + exp(7+t_onset-x)) # seroconversion rate from infection day, based on the clinical paper from Yumei Wen
 para$sensitivity_ab <- 0.9 # ab test sensitivity
 para$sensitivity_pcr <- 0.999 # pcr test sensitivity
-para$samplefailure_pcr <- 0.3 # pcr sampling failure
+para$samplefailure_pcr <- 0.0 # pcr sampling failure
 para$sensitivity_antig <- 0.9 # antigen sensitivity is 0.8
 
 #########################################################################
@@ -243,7 +243,7 @@ para$Re <- para$R0_adj/para$num_cc *
 ##################################
 
 ###############################################
-# Call master code
+# simulate an outbreak
 ###############################################
 
 all_new_daily <- matrix(nrow = num_rep, ncol = len_sim)
@@ -308,114 +308,15 @@ for(rp in 1:num_rep){
   Rt[rp,] <- rt
 }
 
-# Simulate Scenario 4: symptom & pcr & antigen test
-Rt_antig <- matrix(nrow = num_rep, ncol = len_sim)
-all_antig_new_daily <- matrix(nrow = num_rep, ncol = len_sim)
-cap_antig <- matrix(nrow = num_rep, ncol = len_sim) # store the number of max quarantine
-RDT_antig <-matrix(nrow = num_rep, ncol = len_sim)
-PCR_antig <-matrix(nrow = num_rep, ncol = len_sim)
-###########################################
-# reset parameter for the antigen case
-para$ab_test_rate  <- para$pcr_test_rate # consent for antigen 
-para$ab_rate <- function(x, t_onset) (1-para$samplefailure_pcr) # failure rate of sample for antigen 
-# para$abiso # same as ab
-para$sensitivity_ab <- para$sensitivity_antig # sensitivity is 0.8
-para$tracing_cc_ab <- para$tracing_cc_onset
-# para$cc_success_ab # using the same as ab
-# para$qrate_ab # using the same as ab
-para$delay_ab <- para$delay_symptom # we do the test as soon as the symptom is discovered
-para$onsetiso <- 0 # in this case, we don't quarantine anyone based on symptom
-###########################################
-
-for(rp in 1:num_rep){
-  print(paste("Running Setting=",community_setting,", Scenario 4, Rep: ",rp))
-  
-  # C is the contact matrix, which is traced for 7 days. If i,j element is 7, it means the latest contact of i,j is today,
-  # if it is 0, then there is no contact between i,j in the past 7 days,
-  C <- matrix(0, para$pop_sz,para$pop_sz)
-  
-  # I is a vector indicating when an individual has been infected
-  # NA means susceptible, 0 means infected date
-  I <- matrix(NA, para$pop_sz,1)
-  trace_inf_n <- matrix(0, para$pop_sz,1)
-  # Z is a vector indicating if the infected is detectable
-  Z <- matrix(F, para$pop_sz,1)
-  
-  # onset just save the incubation time 
-  O <- matrix(NA, para$pop_sz,1)
-  
-  # Q is the vector indicating when an individual has been quarantine, NA means not quarantine, 1 means first day
-  Q <- matrix(NA, para$pop_sz,1)
-  RDT_n <- 0 # total number of RDT used
-  PCR_n <- 0 # total number of PCR used
-  rdt <- matrix(0, len_sim)
-  pcr <- matrix(0, len_sim)
-  
-  C_lst <- list()
-  O_lst <- list()
-  I_lst <- list()
-  Q_lst <- list()
-  
-  # initial case
-  # para$E_0 <- floor(runif(1,min = 1, max = 3))
-  init_idx <- sample(1:para$pop_sz, para$E_0)
-  I[init_idx] <- 0
-  O[init_idx] <- incub(para$E_0)
-  Z[init_idx] <- F
-  for(t in 1:len_sim){
-    C_lst[[t]] <- C
-    C <- C_update(C, Q, est1, para)
-    lst <- I_O_update(I, Q, C, O, Z, trace_inf_n, para)
-    I <- lst[[1]]
-    O <- lst[[2]]
-    Z <- lst[[3]]
-    trace_inf_n <- lst[[4]]
-    I_lst[[t]] <- I
-    O_lst[[t]] <- O
-    lst1 <- Q_update(I, Q, C, O, Z, RDT_n, PCR_n, para, flg_ab = TRUE, flg_multi_ab = FALSE, flg_PCR=TRUE, PCR_need_yesterday)
-    Q <- lst1[[1]]
-    RDT_n <-lst1[[2]]
-    PCR_n <-lst1[[3]]
-    PCR_need_yesterday <- lst1[[4]]
-    Q_lst[[t]] <- Q
-    rdt[t] <- RDT_n
-    pcr[t] <- PCR_n
-  }
-  rt <- rep(NA, len_sim)
-  for(t in 1:len_sim){
-    i <- I_lst[[t]]
-    idx <- which(i == 2) # from the second day they are infectious
-    if(length(idx)) rt[t] <- mean(trace_inf_n[idx])
-  }
-  # plot the daily new case
-  ab_new_daily <- rep(NA, len_sim)
-  cap <- rep(NA, len_sim) # store the Q numbers
-  ab_new_daily[1] <- para$E_0
-  cap[1] <- sum(!is.na(Q_lst[[1]]) & Q_lst[[t]] < 14)
-  for(t in 2:len_sim){
-    ab_new_daily[t] <- sum(is.na(I_lst[[t-1]]))  - sum(is.na(I_lst[[t]]))
-    cap[t] <- sum(!is.na(Q_lst[[t]]) & Q_lst[[t]] < 14)
-  }
-  all_antig_new_daily[rp,] <- ab_new_daily
-  cap_antig[rp,] <- cap
-  Rt_antig[rp,] <- rt
-  RDT_antig[rp,] <- rdt
-  PCR_antig[rp,] <- pcr
-}
-
 err_daily <- apply(all_new_daily, 2, function(x) sd(x)/sqrt(length(x)))
-err_antig <- apply(all_antig_new_daily, 2, function(x) sd(x)/sqrt(length(x)))
 
-df_plt <- data.frame(day = 1:len_sim, new_daily = colMeans(all_new_daily),
-                     antig_new_daily = colMeans(all_antig_new_daily), 
-                     err_daily, err_antig)
+
+df_plt <- data.frame(day = 1:len_sim, new_daily = colMeans(all_new_daily), err_daily)
 plt <- ggplot(df_plt,aes(x=day)) +
   geom_line(aes(y = new_daily, color = "Baseline")) +
-  geom_line(aes(y = antig_new_daily, color = "Strategy 3: antigen RDT + PCR")) +
   geom_ribbon(aes( ymax = new_daily + 2*err_daily, ymin = new_daily - 2*err_daily), fill = "red",alpha = 0.3) +
-  geom_ribbon(aes( ymax = antig_new_daily + 2*err_antig, ymin = antig_new_daily - 2*err_antig), fill = "purple",alpha = 0.3) +
   labs(x= "Days from first importing case", y = "New case per day" ) +#,title = paste0("Physical distancing imposed"))+
-  scale_color_manual(values = c("Baseline" = "red",  "Strategy 3: antigen RDT + PCR" = "purple")) + 
+  scale_color_manual(values = c("Baseline" = "red")) + 
   theme(legend.position = "None", panel.background=element_blank()) 
 
 

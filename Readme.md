@@ -1,5 +1,7 @@
 # Contact network based simulation of COVID-19 outbreaks
 
+Examples that illustrate and code that is generated from the study "**Modelling the impact of rapid tests, tracing and distancing in lower-income countries suggest optimal policies varies with rural-urban settings**": https://www.medrxiv.org/content/10.1101/2021.03.17.21253853v1 
+
 ## Quick example
 
 Example code in local_example.R provide quick local simulation for demonstration. Run the script to generate a synthetic population and outbreaks on it. 
